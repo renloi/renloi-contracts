@@ -557,10 +557,9 @@ contract Validators is Params, Ownable {
         uint256 reward = msg.value;
         uint256 remaining = reward;
 
-        //to validator
+        // to validator
         uint _validatorPart = reward * 100000;
         remaining = remaining - _validatorPart;
-      }
 
         uint lastRewardHold = reflectionPercentSum[val][lastRewardTime[val]];
         lastRewardTime[val] = block.timestamp;
@@ -574,16 +573,13 @@ contract Validators is Params, Ownable {
             _validatorPart += remaining;
         }
 
-        // never reach this
-        if (validatorInfo[val].status == Status.NotExist) {
-            return;
-        }
-
         // Jailed validator can't get profits.
-        addProfitsToActiveValidatorsByStakePercentExcept(_validatorPart, address(0));
-
-        emit LogDistributeBlockReward(val, _validatorPart, block.timestamp, _to, _gass);
+        if (validatorInfo[val].status != Status.NotExist) {
+            addProfitsToActiveValidatorsByStakePercentExcept(_validatorPart, address(0));
+            emit LogDistributeBlockReward(val, _validatorPart, block.timestamp, _to, _gass);
+        }
     }
+
 
     function updateActiveValidatorSet(address[] memory newSet, uint256 epoch)
         public
