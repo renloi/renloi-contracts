@@ -361,14 +361,14 @@ contract ValidatorHelper is Ownable {
 
     function waitingUnstaking(address user, address validator) external view returns(uint256){
 
-        //this function is kept as it is for the UI compatibility
-        //no waiting for unstaking
+        // this function is kept as it is for the UI compatibility
+        // no waiting for unstaking
         return 0;
     }
 
     function waitingWithdrawStaking(address user, address validatorAddress) public view returns(uint256){
 
-        //validator and delegators will have waiting
+        // validator and delegators will have waiting
 
         (, uint256 unstakeBlock, ) = valContract.getStakingInfo(user,validatorAddress);
 
@@ -393,7 +393,7 @@ contract ValidatorHelper is Ownable {
     }
 
     function checkValidator(address user) external view returns(bool){
-        //this function is for UI compatibility
+        // this function is for UI compatibility
         return true;
     }
 }         
