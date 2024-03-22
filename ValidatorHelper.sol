@@ -13,7 +13,7 @@ interface InterfaceValidator {
         Staked,
         // validator's staked coins < MinimalStakingCoin
         Unstaked,
-        // validator is jailed by system(validator have to repropose)
+        // validator is jailed by system (validator have to repropose)
         Jailed
     }
     struct Description {
