@@ -14,15 +14,6 @@ abstract contract Context {
     }
 }
 
-abstract contract Context {
-    function _msgSender() internal view virtual returns (address) {
-        return msg.sender;
-    }
-
-    function _msgData() internal view virtual returns (bytes calldata) {
-        return msg.data;
-    }
-}
 contract Validators is Params {
     constructor(address[] memory vals) {
         punish = Punish(PunishContractAddr);
