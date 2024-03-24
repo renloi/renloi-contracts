@@ -3,6 +3,7 @@ pragma solidity 0.8.17;
 
 import "./Params.sol";
 import "./Punish.sol";
+
 abstract contract Context {
     function _msgSender() internal view virtual returns (address) {
         return msg.sender;
@@ -13,100 +14,44 @@ abstract contract Context {
     }
 }
 
-/**
- * @dev Contract module which provides a basic access control mechanism, where
- * there is an account (an owner) that can be granted exclusive access to
- * specific functions.
- *
- * By default, the owner account will be the one that deploys the contract. This
- * can later be changed with {transferOwnership}.
- *
- * This module is used through inheritance. It will make available the modifier
- * `onlyOwner`, which can be applied to your functions to restrict their use to
- * the owner.
- */
-abstract contract Ownable is Context {
-    address public _owner;
-
-    event OwnershipTransferred(
-        address indexed previousOwner,
-        address indexed newOwner
-    );
-
-    /**
-     * @dev Initializes the contract setting the deployer as the initial owner.
-     */
-    constructor() {
-        _transferOwnership(_msgSender());
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
     }
 
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        _checkOwner();
-        _;
-    }
-
-    /**
-     * @dev Returns the address of the current owner.
-     */
-    function owner() public view virtual returns (address) {
-        return _owner;
-    }
-
-    /**
-     * @dev Throws if the sender is not the owner.
-     */
-    function _checkOwner() internal view virtual {
-        require(owner() == _msgSender(), "Ownable: caller is not the owner");
-    }
-
-    /**
-     * @dev Leaves the contract without owner. It will not be possible to call
-     * `onlyOwner` functions anymore. Can only be called by the current owner.
-     *
-     * NOTE: Renouncing ownership will leave the contract without an owner,
-     * thereby removing any functionality that is only available to the owner.
-     */
-    function renounceOwnership() public virtual onlyOwner {
-        _transferOwnership(address(0));
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Can only be called by the current owner.
-     */
-    function transferOwnership(address newOwner) public virtual onlyOwner {
-        require(
-            newOwner != address(0),
-            "Ownable: new owner is the zero address"
-        );
-        _transferOwnership(newOwner);
-    }
-
-    /**
-     * @dev Transfers ownership of the contract to a new account (`newOwner`).
-     * Internal function without access restriction.
-     */
-    function _transferOwnership(address newOwner) internal virtual {
-        address oldOwner = _owner;
-        _owner = newOwner;
-        emit OwnershipTransferred(oldOwner, newOwner);
+    function _msgData() internal view virtual returns (bytes calldata) {
+        return msg.data;
     }
 }
-contract Validators is Params, Ownable {
+contract Validators is Params {
+    constructor(address[] memory vals) {
+        punish = Punish(PunishContractAddr);
 
+        for (uint256 i = 0; i < vals.length; i++) {
+            require(vals[i] != address(0), "Invalid validator address");
+            lastRewardTime[vals[i]] = block.timestamp;
+
+            if (!isActiveValidator(vals[i])) {
+                currentValidatorSet.push(vals[i]);
+            }
+            if (!isTopValidator(vals[i])) {
+                highestValidatorsSet.push(vals[i]);
+            }
+            if (validatorInfo[vals[i]].feeAddr == address(0)) {
+                validatorInfo[vals[i]].feeAddr = payable(vals[i]);
+            }
+            // Important: NotExist validator can't get profits
+            if (validatorInfo[vals[i]].status == Status.NotExist) {
+                validatorInfo[vals[i]].status = Status.Staked;
+            }
+        }
+        initialized = true;
+    }
     enum Status {
-        // validator not exist, default status
         NotExist,
-        // validator created
         Created,
-        // anyone has staked for the validator
         Staked,
-        // validator's staked coins < MinimalStakingCoin
         Unstaked,
-        // validator is jailed by system(validator have to repropose)
         Jailed
     }
 
@@ -125,49 +70,27 @@ contract Validators is Params, Ownable {
         Description description;
         uint256 hbIncoming;
         uint256 totalJailedHB;
-      //  uint256 lastWithdrawProfitsBlock;
-        // Address list of user who has staked for this validator
         address[] stakers;
     }
 
     struct StakingInfo {
         uint256 coins;
-        // unstakeBlock != 0 means that you are unstaking your stake, so you can't
-        // stake or unstake
         uint256 unstakeBlock;
-        // index of the staker list in validator
         uint256 index;
     }
 
     mapping(address => Validator) validatorInfo;
-    // staker => validator => info
     mapping(address => mapping(address => StakingInfo)) staked;
-    // current validator set used by chain
-    // only changed at block epoch
     address[] public currentValidatorSet;
-    // highest validator set(dynamic changed)
     address[] public highestValidatorsSet;
-    // total stake of all validators
     uint256 public totalStake;
-    // total jailed hb
     uint256 public totalJailedHB;
-
     mapping(address => address) public contractCreator;
-
-    // staker => validator => lastRewardTime
     mapping(address => mapping(address => uint)) public stakeTime;
-    //validator => LastRewardtime
     mapping( address => uint) public lastRewardTime;
-    //validator => lastRewardTime => reflectionPerent
     mapping(address => mapping( uint => uint )) public reflectionPercentSum;
-
-    // System contracts
     Punish punish;
-
-
-
     enum Operations {Distribute, UpdateValidators}
-    // Record the operations is done or not.
     mapping(uint256 => mapping(uint8 => bool)) operationsDone;
 
     event LogCreateValidator(
@@ -241,9 +164,6 @@ contract Validators is Params, Ownable {
         _;
     }
 
-
-    // This contract share of validator gain to creator of contract
-    // It is advised to call this function your contract constructor to avoid intruders
     function setContractCreator(address _contract ) public returns(bool)
     {
         require(contractCreator[_contract] == address(0), "invalid call");
@@ -251,32 +171,6 @@ contract Validators is Params, Ownable {
         return true;
     }
 
-    function initialize(address[] calldata vals) external onlyNotInitialized {
-        punish = Punish(PunishContractAddr);
-        _owner = 0x9c32F71D4DB8Fb9e1A58B0a80dF79935e7256FA6;
-
-        for (uint256 i = 0; i < vals.length; i++) {
-            require(vals[i] != address(0), "Invalid validator address");
-            lastRewardTime[vals[i]] = block.timestamp;
-
-            if (!isActiveValidator(vals[i])) {
-                currentValidatorSet.push(vals[i]);
-            }
-            if (!isTopValidator(vals[i])) {
-                highestValidatorsSet.push(vals[i]);
-            }
-            if (validatorInfo[vals[i]].feeAddr == address(0)) {
-                validatorInfo[vals[i]].feeAddr = payable(vals[i]);
-            }
-            // Important: NotExist validator can't get profits
-            if (validatorInfo[vals[i]].status == Status.NotExist) {
-                validatorInfo[vals[i]].status = Status.Staked;
-            }
-        }
-        initialized = true;
-    }
-
-    // stake for the validator
     function stake(address validator)
         public
         payable
@@ -298,7 +192,6 @@ contract Validators is Params, Ownable {
         );
 
         Validator storage valInfo = validatorInfo[validator];
-        // The staked coins of validator must >= MinimalStakingCoin
         if(staker == validator){
             require(
                 valInfo.coins + (staking) >= MinimalStakingCoin,
@@ -310,9 +203,7 @@ contract Validators is Params, Ownable {
             require(staking >= MinimalStakingCoin,
             "Staking coins not enough");
         }
-        // stake at first time to this valiadtor
         if (staked[staker][validator].coins == 0) {
-            // add staker to validator's record list
             staked[staker][validator].index = valInfo.stakers.length;
             valInfo.stakers.push(staker);
             if(lastRewardTime[validator] == 0)
@@ -363,7 +254,6 @@ contract Validators is Params, Ownable {
         }
         else  if(msg.value > 0)
         {
-            //require(msg.value == 0, "Cannot restake from here");
              return false;
         }
 
@@ -380,7 +270,6 @@ contract Validators is Params, Ownable {
         );
 
         if (isCreate) {
-            // for the first time, validator has to stake minimum coins.
             require(msg.value >= minimumValidatorStaking, "Invalid validator amount");
             stake(validator);
             emit LogCreateValidator(validator, feeAddr, block.timestamp);
@@ -396,7 +285,6 @@ contract Validators is Params, Ownable {
         onlyInitialized
         returns (bool)
     {
-        // Only update validator status if Unstaked/Jailed
         if (
             validatorInfo[validator].status != Status.Unstaked &&
             validatorInfo[validator].status != Status.Jailed
@@ -434,8 +322,6 @@ contract Validators is Params, Ownable {
             "You are already in unstaking status"
         );
         require(unstakeAmount > 0, "You don't have any stake");
-        // You can't unstake if the validator is the only one top validator and
-        // this unstake operation will cause staked coins of validator < MinimalStakingCoin
         require(
             !(highestValidatorsSet.length == 1 &&
                 isTopValidator(validator) &&
@@ -443,12 +329,10 @@ contract Validators is Params, Ownable {
             "You can't unstake, validator list will be empty after this operation!"
         );
 
-        // try to remove this staker out of validator stakers list.
         if (stakingInfo.index != valInfo.stakers.length - 1) {
             valInfo.stakers[stakingInfo.index] = valInfo.stakers[valInfo
                 .stakers
                 .length - 1];
-            // update index of the changed staker.
             staked[valInfo.stakers[stakingInfo.index]][validator]
                 .index = stakingInfo.index;
         }
@@ -458,10 +342,8 @@ contract Validators is Params, Ownable {
         stakingInfo.unstakeBlock = block.number;
         stakingInfo.index = 0;
         totalStake = totalStake - (unstakeAmount);
-        // try to remove it out of active validator set if validator's coins < MinimalStakingCoin
         if (valInfo.coins < MinimalStakingCoin && validatorInfo[validator].status != Status.Jailed) {
             valInfo.status = Status.Unstaked;
-            // it's ok if validator not in highest set
             tryRemoveValidatorInHighestSet(validator);
         }
 
@@ -474,7 +356,6 @@ contract Validators is Params, Ownable {
     function withdrawStakingReward(address validator) public returns(bool)
     {
         require(stakeTime[tx.origin][validator] > 0 , "nothing staked");
-        //require(stakeTime[tx.origin][validator] < lastRewardTime[validator], "no reward yet");
         StakingInfo storage stakingInfo = staked[tx.origin][validator];
         uint validPercent = reflectionPercentSum[validator][lastRewardTime[validator]] - reflectionPercentSum[validator][stakeTime[tx.origin][validator]];
         if(validPercent > 0)
@@ -495,7 +376,6 @@ contract Validators is Params, Ownable {
             "validator not exist"
         );
         require(stakingInfo.unstakeBlock != 0, "You have to unstake first");
-        // Ensure staker can withdraw his staking back
         require(
             stakingInfo.unstakeBlock + StakingLockPeriod <= block.number,
             "Your staking haven't unlocked yet"
@@ -504,13 +384,11 @@ contract Validators is Params, Ownable {
         require(staking > 0, "You don't have any stake");
         stakingInfo.coins = 0;
         stakingInfo.unstakeBlock = 0;
-        // send stake back to staker
         staker.transfer(staking);
         emit LogWithdrawStaking(staker, validator, staking, block.timestamp);
         return true;
     }
 
-    // feeAddr can withdraw profits of it's validator
     function withdrawProfits(address validator) external returns (bool) {
         address payable feeAddr = payable(tx.origin);
         require(
@@ -524,11 +402,8 @@ contract Validators is Params, Ownable {
         uint256 hbIncoming = validatorInfo[validator].hbIncoming;
         require(hbIncoming > 0, "You don't have any profits");
 
-        // update info
         validatorInfo[validator].hbIncoming = 0;
-        // validatorInfo[validator].lastWithdrawProfitsBlock = block.number;
 
-        // send profits to fee address
         if (hbIncoming > 0) {
             feeAddr.transfer(hbIncoming);
         }
@@ -544,7 +419,6 @@ contract Validators is Params, Ownable {
     }
 
 
-    // distributeBlockReward distributes block reward to all active validators
     function distributeBlockReward(address[] memory _to, uint64[] memory _gass)
         external
         payable
@@ -573,7 +447,6 @@ contract Validators is Params, Ownable {
             _validatorPart += remaining;
         }
 
-        // Jailed validator can't get profits.
         if (validatorInfo[val].status != Status.NotExist) {
             addProfitsToActiveValidatorsByStakePercentExcept(_validatorPart, address(0));
             emit LogDistributeBlockReward(val, _validatorPart, block.timestamp, _to, _gass);
@@ -601,8 +474,6 @@ contract Validators is Params, Ownable {
 
         tryRemoveValidatorIncoming(val);
 
-        // remove the validator out of active set
-        // Note: the jailed validator may in active set if there is only one validator exists
         if (highestValidatorsSet.length > 1) {
             tryJailValidator(val);
             emit LogRemoveValidator(val, hb, block.timestamp);
@@ -656,7 +527,6 @@ contract Validators is Params, Ownable {
             v.coins,
             v.hbIncoming,
             v.totalJailedHB,
-          //  v.lastWithdrawProfitsBlock,
             v.stakers
         );
     }
@@ -750,7 +620,6 @@ contract Validators is Params, Ownable {
     function tryAddValidatorToHighestSet(address val, uint256 staking)
         internal
     {
-        // do nothing if you are already in highestValidatorsSet set
         for (uint256 i = 0; i < highestValidatorsSet.length; i++) {
             if (highestValidatorsSet[i] == val) {
                 return;
@@ -763,7 +632,6 @@ contract Validators is Params, Ownable {
             return;
         }
 
-        // find lowest validator index in current validator set
         uint256 lowest = validatorInfo[highestValidatorsSet[0]].coins;
         uint256 lowestIndex = 0;
         for (uint256 i = 1; i < highestValidatorsSet.length; i++) {
@@ -773,12 +641,10 @@ contract Validators is Params, Ownable {
             }
         }
 
-        // do nothing if staking amount isn't bigger than current lowest
         if (staking <= lowest) {
             return;
         }
 
-        // replace the lowest validator
         emit LogAddToTopValidators(val, block.timestamp);
         emit LogRemoveFromTopValidators(
             highestValidatorsSet[lowestIndex],
@@ -788,7 +654,6 @@ contract Validators is Params, Ownable {
     }
 
     function tryRemoveValidatorIncoming(address val) private {
-        // do nothing if validator not exist(impossible)
         if (
             validatorInfo[val].status == Status.NotExist ||
             currentValidatorSet.length <= 1
@@ -799,7 +664,6 @@ contract Validators is Params, Ownable {
         uint256 hb = validatorInfo[val].hbIncoming;
         if (hb > 0) {
             addProfitsToActiveValidatorsByStakePercentExcept(hb, val);
-            // for display purpose
             totalJailedHB = totalJailedHB + (hb);
             validatorInfo[val].totalJailedHB = validatorInfo[val]
                 .totalJailedHB
@@ -811,7 +675,6 @@ contract Validators is Params, Ownable {
         emit LogRemoveValidatorIncoming(val, hb, block.timestamp);
     }
 
-    // add profits to all validators by stake percent except the punished validator or jailed validator
     function addProfitsToActiveValidatorsByStakePercentExcept(
         uint256 totalReward,
         address punishedVal
@@ -834,7 +697,6 @@ contract Validators is Params, Ownable {
         uint256 remain;
         address last;
 
-        // no stake(at genesis period)
         if (totalRewardStake == 0) {
             uint256 per = totalReward / (rewardValsLen);
             remain = totalReward - (per * rewardValsLen);
@@ -886,27 +748,22 @@ contract Validators is Params, Ownable {
     }
 
     function tryJailValidator(address val) private {
-        // do nothing if validator not exist
         if (validatorInfo[val].status == Status.NotExist) {
             return;
         }
 
-        // set validator status to jailed
         validatorInfo[val].status = Status.Jailed;
 
-        // try to remove if it's in active validator set
         tryRemoveValidatorInHighestSet(val);
     }
 
     function tryRemoveValidatorInHighestSet(address val) private {
         for (
             uint256 i = 0;
-            // ensure at least one validator exist
             i < highestValidatorsSet.length && highestValidatorsSet.length > 1;
             i++
         ) {
             if (val == highestValidatorsSet[i]) {
-                // remove it
                 if (i != highestValidatorsSet.length - 1) {
                     highestValidatorsSet[i] = highestValidatorsSet[highestValidatorsSet
                         .length - 1];
@@ -930,10 +787,6 @@ contract Validators is Params, Ownable {
             }
         }
         return 0;
-    }
-
-    function updateMinimumValidatorStaking(uint256 _minStaking) external onlyOwner {
-      minimumValidatorStaking = _minStaking;
     }
 
 }
