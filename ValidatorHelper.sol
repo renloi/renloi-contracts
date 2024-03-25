@@ -61,7 +61,7 @@ abstract contract Context {
     }
 }
 
-contract ValidatorHelper is context {
+contract ValidatorHelper {
 
     InterfaceValidator public valContract = InterfaceValidator(0x0000000000000000000000000000000000000001);
     uint256 public minimumValidatorStaking = 1000000 * 1e18;
