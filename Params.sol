@@ -6,12 +6,9 @@ contract Params {
 
     // System contracts
     address
-        public constant ValidatorContractAddr = 0x000000000000000000000000000000000000f000;
+        public constant ValidatorContractAddr = 0x0000000000000000000000000000000000000001;
     address
-        public constant PunishContractAddr = 0x000000000000000000000000000000000000F001;
-    address
-        public constant ProposalAddr = 0x000000000000000000000000000000000000F002;
-
+        public constant PunishContractAddr = 0x0000000000000000000000000000000000000002;
     // System params
     uint16 public constant MaxValidators = 2680;
     // Validator have to wait StakingLockPeriod blocks to withdraw staking
@@ -50,11 +47,6 @@ contract Params {
             msg.sender == ValidatorContractAddr,
             "Validators contract only"
         );
-        _;
-    }
-
-    modifier onlyProposalContract() {
-        require(msg.sender == ProposalAddr, "Proposal contract only");
         _;
     }
 }
