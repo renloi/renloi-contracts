@@ -272,7 +272,6 @@ contract Validators is Params {
 
     function tryReactive(address validator)
         external
-        onlyProposalContract
         onlyInitialized
         returns (bool)
     {
