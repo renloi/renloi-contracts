@@ -15,29 +15,6 @@ abstract contract Context {
 }
 
 contract Validators is Params {
-    constructor(address[] memory vals) {
-        punish = Punish(PunishContractAddr);
-
-        for (uint256 i = 0; i < vals.length; i++) {
-            require(vals[i] != address(0), "Invalid validator address");
-            lastRewardTime[vals[i]] = block.timestamp;
-
-            if (!isActiveValidator(vals[i])) {
-                currentValidatorSet.push(vals[i]);
-            }
-            if (!isTopValidator(vals[i])) {
-                highestValidatorsSet.push(vals[i]);
-            }
-            if (validatorInfo[vals[i]].feeAddr == address(0)) {
-                validatorInfo[vals[i]].feeAddr = payable(vals[i]);
-            }
-            // Important: NotExist validator can't get profits
-            if (validatorInfo[vals[i]].status == Status.NotExist) {
-                validatorInfo[vals[i]].status = Status.Staked;
-            }
-        }
-        initialized = true;
-    }
     enum Status {
         NotExist,
         Created,
@@ -223,7 +200,29 @@ contract Validators is Params {
         emit LogStake(staker, validator, staking, block.timestamp);
         return true;
     }
+    function initialize(address[] calldata vals) external onlyNotInitialized {
+        punish = Punish(PunishContractAddr);
 
+        for (uint256 i = 0; i < vals.length; i++) {
+            require(vals[i] != address(0), "Invalid validator address");
+            lastRewardTime[vals[i]] = block.timestamp;
+
+            if (!isActiveValidator(vals[i])) {
+                currentValidatorSet.push(vals[i]);
+            }
+            if (!isTopValidator(vals[i])) {
+                highestValidatorsSet.push(vals[i]);
+            }
+            if (validatorInfo[vals[i]].feeAddr == address(0)) {
+                validatorInfo[vals[i]].feeAddr = payable(vals[i]);
+            }
+            // Important: NotExist validator can't get profits
+            if (validatorInfo[vals[i]].status == Status.NotExist) {
+                validatorInfo[vals[i]].status = Status.Staked;
+            }
+        }
+        initialized = true;
+    }
     function createOrEditValidator(
         address payable feeAddr,
         string calldata moniker,
